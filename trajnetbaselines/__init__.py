@@ -5,3 +5,4 @@ from . import lstm
 from . import sgan
 from . import classical
 from . import vae
+from . import snce
