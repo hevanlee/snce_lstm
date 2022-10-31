@@ -20,8 +20,6 @@ from .gridbased_pooling import GridBasedPooling
 from .non_gridbased_pooling import NN_Pooling, HiddenStateMLPPooling, AttentionMLPPooling, DirectionalMLPPooling
 from .non_gridbased_pooling import NN_LSTM, TrajectronPooling, SAttention_fast
 from .more_non_gridbased_pooling import NMMP
-from snce.contrastive import *
-from snce.model import *
 
 from .. import __version__ as VERSION
 
@@ -255,8 +253,8 @@ class Trainer(object):
         if self.obs_dropout:
             self.start_length = random.randint(0, self.obs_length - 2)
 
-        observed = batch_scene[self.start_length:self.obs_length].clone()
-        prediction_truth = batch_scene[self.obs_length:self.seq_length-1].clone()
+        observed = batch_scene[self.start_length:self.obs_length].clone().to(self.device)
+        prediction_truth = batch_scene[self.obs_length:self.seq_length-1].clone().to(self.device)
         targets = batch_scene[self.obs_length:self.seq_length] - batch_scene[self.obs_length-1:self.seq_length-1]
 
         rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
@@ -462,8 +460,9 @@ def main(epochs=25):
 
     # add args.device
     args.device = torch.device('cpu')
-    # if not args.disable_cuda and torch.cuda.is_available():
-    #     args.device = torch.device('cuda')
+    if not args.disable_cuda and torch.cuda.is_available():
+        args.device = torch.device('cuda')
+    print("device:", args.device)
 
     args.path = 'DATA_BLOCK/' + args.path
     ## Prepare data
@@ -532,6 +531,13 @@ def main(epochs=25):
         # useful to continue model training
             print("Loading Optimizer Dict")
             optimizer.load_state_dict(checkpoint['optimizer'])
+            
+            # EDIT: Move optimizer state to GPU
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.cuda()
+
             lr_scheduler.load_state_dict(checkpoint['scheduler'])
             start_epoch = checkpoint['epoch']
 
