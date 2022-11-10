@@ -26,6 +26,9 @@ from .. import __version__ as VERSION
 from .utils import center_scene, random_rotation
 from .data_load_utils import prepare_data
 
+from snce.model import ProjHead, EventEncoder
+from snce.contrastive import SocialNCE
+
 class Trainer(object):
     def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
                  device=None, batch_size=8, obs_length=9, pred_length=12, augment=True,
@@ -61,7 +64,13 @@ class Trainer(object):
 
         self.val_flag = val_flag
 
+    # TODO: setup SNCE model, add contrast loss
+    # TODO: FIGURE OUT DIMENSIONS FOR CONTRASTIVE
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
+        projection_head = ProjHead(feat_dim=64, hidden_dim=32, head_dim=8).to(args.device)
+        encoder_sample = EventEncoder(hidden_dim=8, head_dim=8).to(args.device)
+        contrastive = SocialNCE(projection_head, encoder_sample, args.contrast_sampling)
+
         for epoch in range(start_epoch, epochs):
             if epoch % self.save_every == 0:
                 state = {'epoch': epoch, 'state_dict': self.model.state_dict(),
@@ -360,6 +369,9 @@ def main(epochs=25):
                         help='flag to add noise to observations for robustness')
     parser.add_argument('--obs_dropout', action='store_true',
                         help='perform observation length dropout')
+
+    ## Social NCE
+    parser.add_argument('--contrast_sampling', type=str, default='event')
 
     ## Loading pre-trained models
     pretrain = parser.add_argument_group('pretraining')

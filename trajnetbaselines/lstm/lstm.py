@@ -102,6 +102,8 @@ class LSTM(torch.nn.Module):
             torch.stack([h for m, h in zip(track_mask, hidden_cell_state[0]) if m], dim=0),
             torch.stack([c for m, c in zip(track_mask, hidden_cell_state[1]) if m], dim=0),
         ]
+        ##
+        hidden_cell_stacked_c = torch.zeros_like(hidden_cell_stacked)
 
         ## Mask current velocity & embed
         curr_velocity = obs2 - obs1
@@ -119,9 +121,14 @@ class LSTM(torch.nn.Module):
             input_emb = torch.cat([input_emb, goal_emb], dim=1)
 
         ## Mask & Pool per scene
+        ## Counterfactual
         if self.pool is not None:
             hidden_states_to_pool = torch.stack(hidden_cell_state[0]).clone() # detach?
             batch_pool = []
+
+            ##
+            batch_pool_c = []
+
             ## Iterate over scenes
             for (start, end) in zip(batch_split[:-1], batch_split[1:]):
                 ## Mask for the scene
@@ -130,6 +137,9 @@ class LSTM(torch.nn.Module):
                 prev_position = obs1[start:end][scene_track_mask]
                 curr_position = obs2[start:end][scene_track_mask]
                 curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
+
+                ##
+                curr_hidden_state_c = torch.zeros_like(curr_hidden_state)
 
                 ## Provide track_mask to the interaction encoders
                 ## Everyone absent by default. Only those visible in current scene are present
@@ -141,7 +151,14 @@ class LSTM(torch.nn.Module):
                 pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
                 batch_pool.append(pool_sample)
 
+                ##
+                pool_sample_c = self.pool(curr_hidden_state_c, prev_position, curr_position)
+                batch_pool_c.append(pool_sample_c)
+
             pooled = torch.cat(batch_pool)
+            ##
+            pooled_c = torch.cat(batch_pool_c)
+            
             if self.pool_to_input:
                 input_emb = torch.cat([input_emb, pooled], dim=1)
             else:
@@ -149,8 +166,11 @@ class LSTM(torch.nn.Module):
 
         # LSTM step
         hidden_cell_stacked = lstm(input_emb, hidden_cell_stacked)
-        normal_masked = self.hidden2normal(hidden_cell_stacked[0])
+        ## 
+        hidden_cell_stacked_c = lstm(input_emb, hidden_cell_stacked_c)
+        hidden_cell_stacked_out = hidden_cell_stacked - hidden_cell_stacked_c
 
+        normal_masked = self.hidden2normal(hidden_cell_stacked_out[0])
         # unmask [Update hidden-states and next velocities of pedestrians]
         normal = torch.full((track_mask.size(0), 5), NAN, device=obs1.device)
         mask_index = [i for i, m in enumerate(track_mask) if m]
