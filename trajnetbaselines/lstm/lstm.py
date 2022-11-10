@@ -103,7 +103,15 @@ class LSTM(torch.nn.Module):
             torch.stack([c for m, c in zip(track_mask, hidden_cell_state[1]) if m], dim=0),
         ]
         ##
-        hidden_cell_stacked_c = torch.zeros_like(hidden_cell_stacked)
+        hidden_cell_state_zeros = torch.zeros_like(hidden_cell_state[0][0])
+        hidden_cell_state_c = []
+        for i in range(len(hidden_cell_state[0])):
+            hidden_cell_state_tensor = hidden_cell_state_zeros + torch.randn(hidden_cell_state_zeros.size()).to(obs1.device)
+            hidden_cell_state_c += [hidden_cell_state_tensor]
+        hidden_cell_stacked_c = [
+            torch.stack([h for m, h in zip(track_mask, hidden_cell_state_c) if m], dim=0),
+            torch.stack([c for m, c in zip(track_mask, hidden_cell_state_c) if m], dim=0),
+        ]
 
         ## Mask current velocity & embed
         curr_velocity = obs2 - obs1
@@ -168,15 +176,17 @@ class LSTM(torch.nn.Module):
         hidden_cell_stacked = lstm(input_emb, hidden_cell_stacked)
         ## 
         hidden_cell_stacked_c = lstm(input_emb, hidden_cell_stacked_c)
-        hidden_cell_stacked_out = hidden_cell_stacked - hidden_cell_stacked_c
+        hidden_cell_stacked_out = []
+        for tensor, tensor_c in zip(hidden_cell_stacked, hidden_cell_stacked_c):
+            hidden_cell_stacked_out += [tensor - tensor_c]
 
         normal_masked = self.hidden2normal(hidden_cell_stacked_out[0])
         # unmask [Update hidden-states and next velocities of pedestrians]
         normal = torch.full((track_mask.size(0), 5), NAN, device=obs1.device)
         mask_index = [i for i, m in enumerate(track_mask) if m]
         for i, h, c, n in zip(mask_index,
-                              hidden_cell_stacked[0],
-                              hidden_cell_stacked[1],
+                              hidden_cell_stacked_out[0],
+                              hidden_cell_stacked_out[1],
                               normal_masked):
             hidden_cell_state[0][i] = h
             hidden_cell_state[1][i] = c
